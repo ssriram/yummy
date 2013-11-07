@@ -1,0 +1,124 @@
+#!/bin/bash
+#
+# yummy - advanced package management utility on top of yum
+# by h0T\$h0T ( Sriram.S )
+#
+# 
+
+ID=001-15062009
+
+if [ $(whoami) != "root" ] ; then
+    echo "you are not 'root'" >&2
+    exit 1
+fi
+  
+old=$(pwd)
+
+function check_deps()
+{
+	echo "Checking dependencies for yummy..."
+	
+    if rpm -q createrepo | grep "not installed" >/dev/null
+    then
+        echo "Sorry but you need 'createrepo' for this script to work!"
+        echo "'createrepo' is not installed!"
+        echo "Installing 'createrepo' ..."
+        yum -y install createrepo
+    fi
+  
+    if rpm -q yum-downloadonly | grep "not installed" >/dev/null
+    then
+        echo "sorry but you need 'yum-downloadonly' plugin for this script to work!"
+        echo "'yum-downloadonly' is not installed!"
+        echo "Installing 'yum-downloadonly' ..."
+        yum -y install yum-downloadonly
+    fi
+  
+    if rpm -q tar | grep "not installed" >/dev/null
+    then
+        echo "sorry but you need 'tar' for this script to work!"
+        echo "'tar' is not installed!"
+        echo "Installing 'tar' ..."
+        yum -y install tar
+        exit 1
+    fi
+}
+
+  
+yum_arg="--enablerepo fedora,updates,rpmfusion-free,rpmfusion-nonfree --downloaddir"
+
+function install()
+{
+    #if yum info $1 | grep "No matching Packages to list" >/dev/null
+    #then
+    #echo "There is no package called $1"
+    #echo "Not installing ..."
+    #exit 1
+    #fi
+
+    echo "Creating folder $2"
+    mkdir -p $2
+    echo "Info on $1"
+    yum info $1
+    echo "Downloading and installing $1"
+    yum -y $yum_arg $2 install $1
+    echo $1 >> $2/yumargs
+    createrepo $2
+    echo "Compressing repo package ..."
+    tar -cjf $2.tar.bz2 $2
+
+    #rm -rf $2
+}
+
+  
+function install_file()
+{
+    tar -xjf $1.tar.bz2 $1
+    echo "Creating yummy repository"
+    echo "[yummy]" > yummy.repo
+    echo "name=yummy" >> yummy.repo
+    echo "baseurl=file://$old/$1" >> yummy.repo
+    echo "enabled=0" >>yummy.repo
+    echo "gpgcheck=0" >>yummy.repo
+
+    cat yummy.repo
+    cp yummy.repo /etc/yum.repos.d/yummy.repo
+    yum_a=$(head $1/yumargs -n 1)
+    echo $yum_a
+
+    yum --disablerepo fedora,updates,rpmfusion-free,rpmfusion-nonfree --enablerepo
+    yummy -y install $yum_a
+    rm /etc/yum.repos.d/yummy.repo
+    rm -rf $1
+    rm yummy.repo
+    exit 1
+}
+
+check_deps;
+  
+case "$1" in
+    -h|--help)  
+        echo "yummy - advanced package management utility on top of yum"
+        echo "by h0T\$h0T ( Sriram.S )"
+        exit 0
+        ;;
+
+    -i|--install)  
+        echo "installing $2"
+        install "$2" "yummy-$3"
+        exit 0
+        ;;
+
+    -d|--down)  
+        echo "downloading $2"
+        yum_arg="--enablerepo fedora,updates,rpmfusion-free,rpmfusion-nonfree --downloadonly --downloaddir"
+        install "$2" "yummy-$3"
+        exit 0
+        ;;
+
+    -f|--install-file)  
+        echo "installing from yummy install file $2"
+        install_file $2 "$3"
+        exit 0
+        ;;
+esac
